@@ -1,0 +1,136 @@
+:root {
+    --sigra-primary: #0b3d67;
+    --sigra-primary-dark: #082a48;
+    --sigra-accent: #c9a227;
+    --sigra-bg: #f4f6f9;
+}
+
+body {
+    background-color: var(--sigra-bg);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+.sigra-auth-body {
+    background: linear-gradient(135deg, var(--sigra-primary-dark), var(--sigra-primary));
+    min-height: 100vh;
+}
+
+.sigra-auth-card {
+    border-radius: 14px;
+}
+
+.sigra-app {
+    min-height: 100vh;
+}
+
+.sigra-sidebar {
+    width: 260px;
+    min-width: 260px;
+    background: linear-gradient(180deg, var(--sigra-primary-dark), var(--sigra-primary));
+    color: #fff;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+}
+
+.sigra-sidebar .nav-link {
+    color: rgba(255,255,255,0.85);
+    border-radius: 8px;
+    font-size: 0.92rem;
+    padding: 0.55rem 0.75rem;
+}
+
+.sigra-sidebar .nav-link:hover {
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+}
+
+.sigra-sidebar .nav-link.active {
+    background: var(--sigra-accent);
+    color: #1c1c1c;
+    font-weight: 600;
+}
+
+.sigra-content {
+    min-width: 0;
+}
+
+.stat-card {
+    border: none;
+    border-radius: 14px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+}
+
+.stat-card .stat-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+}
+
+.sigra-auth-logo {
+    max-height: 80px;
+    width: auto;
+    object-fit: contain;
+    margin-bottom: 0.5rem;
+}
+
+.sigra-sidebar-logo {
+    height: 32px;
+    width: 32px;
+    object-fit: contain;
+    border-radius: 6px;
+    background: #fff;
+    padding: 2px;
+    flex-shrink: 0;
+}
+
+.timeline {
+    position: relative;
+    padding-left: 2rem;
+    border-left: 3px solid #e2e6ec;
+}
+
+.timeline-item {
+    position: relative;
+    padding-bottom: 1.5rem;
+}
+
+.timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -2.44rem;
+    top: 0.15rem;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--sigra-primary);
+    border: 3px solid #fff;
+    box-shadow: 0 0 0 2px var(--sigra-primary);
+}
+
+.badge-estado {
+    font-size: 0.75rem;
+    padding: 0.35em 0.7em;
+}
+
+@media print {
+    .no-print { display: none !important; }
+    .sigra-sidebar, .sigra-topbar { display: none !important; }
+}
+
+@media (max-width: 991.98px) {
+    .sigra-sidebar {
+        position: fixed;
+        left: -280px;
+        z-index: 1050;
+        transition: left 0.2s ease;
+    }
+    .sigra-sidebar.show {
+        left: 0;
+    }
+}
