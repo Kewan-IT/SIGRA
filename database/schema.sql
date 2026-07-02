@@ -195,7 +195,7 @@ CREATE TABLE configuracoes (
 
 INSERT INTO roles (chave, nome, descricao) VALUES
 ('admin', 'Administrador', 'Gestão total do sistema'),
-('recepcao_dfp', 'Recepção (DFP)', 'Regista e distribui os processos recebidos'),
+('recepcao_dfp', 'Recepção (Secretaria)', 'Regista e encaminha os processos recebidos na Secretaria'),
 ('tecnico', 'Técnico', 'Analisa e tramita os processos atribuídos'),
 ('chefe_departamento', 'Chefe do Departamento', 'Verifica e despacha os processos'),
 ('director_gabinete', 'Director do Gabinete', 'Aprova ou devolve os processos'),
@@ -203,12 +203,17 @@ INSERT INTO roles (chave, nome, descricao) VALUES
 ('consulta', 'Consulta', 'Apenas visualização, sem permissões de edição');
 
 INSERT INTO departments (chave, nome, descricao, ordem) VALUES
-('dfp', 'Departamento da Função Pública', 'Recepção, distribuição e envio dos processos', 1),
+('secretaria', 'Secretaria', 'Recepção inicial dos processos/documentos', 0),
+('dfp', 'Função Pública', 'Departamento da Função Pública (DFP)', 1),
 ('tecnico', 'Gabinete Técnico', 'Análise técnica dos processos', 2),
 ('chefe_departamento', 'Gabinete do Chefe do Departamento', 'Verificação e despacho', 3),
 ('director_gabinete', 'Gabinete do Director', 'Aprovação do Director do Gabinete do Governador', 4),
 ('gabinete_governador', 'Gabinete do Governador', 'Homologação e assinatura do Governador', 5),
-('tribunal_administrativo', 'Tribunal Administrativo', 'Destino final do processo', 6);
+('tribunal_administrativo', 'Tribunal Administrativo', 'Destino final do processo', 6),
+('ugea', 'UGEA', 'Unidade de Gestão Executora das Aquisições', 10),
+('planificacao', 'Planificação', 'Departamento de Planificação', 11),
+('financas', 'Finanças', 'Departamento de Finanças', 12),
+('assessoria', 'Departamento de Assessoria', 'Assessoria Jurídica/Técnica', 13);
 
 INSERT INTO districts (nome) VALUES
 ('Alto Molócuè'), ('Gurué'), ('Ile'), ('Maganja da Costa'), ('Milange'),

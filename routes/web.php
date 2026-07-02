@@ -28,10 +28,10 @@ $router->get('/processos', [ProcessController::class, 'index']);
 $router->get('/processos/novo', [ProcessController::class, 'createForm']);
 $router->post('/processos', [ProcessController::class, 'store']);
 $router->get('/processos/{id}', [ProcessController::class, 'show']);
-$router->get('/processos/{id}/distribuir', [ProcessController::class, 'distribuirForm']);
-$router->post('/processos/{id}/distribuir', [ProcessController::class, 'distribuir']);
+$router->get('/processos/{id}/encaminhar', [ProcessController::class, 'encaminharForm']);
 $router->post('/processos/{id}/encaminhar', [ProcessController::class, 'encaminhar']);
 $router->post('/processos/{id}/devolver', [ProcessController::class, 'devolver']);
+$router->post('/processos/{id}/concluir', [ProcessController::class, 'concluir']);
 
 // -------------------------------------------------------------
 // Anexos (download protegido)
@@ -70,7 +70,9 @@ $router->post('/tipos-processo/{id}/eliminar', [ProcessTypeController::class, 'd
 // Administração: Departamentos
 // -------------------------------------------------------------
 $router->get('/departamentos', [DepartmentController::class, 'index']);
+$router->post('/departamentos', [DepartmentController::class, 'store']);
 $router->post('/departamentos/{id}', [DepartmentController::class, 'update']);
+$router->post('/departamentos/{id}/eliminar', [DepartmentController::class, 'delete']);
 
 // -------------------------------------------------------------
 // Administração: Utilizadores

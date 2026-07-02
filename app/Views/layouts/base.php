@@ -38,7 +38,7 @@
                     <i class="bi bi-folder2-open me-2"></i> Processos
                 </a>
             </li>
-            <?php if (in_array($roleSlug, ['admin', 'recepcao_dfp'], true)): ?>
+            <?php if (Auth::podeRegistarProcesso()): ?>
             <li class="nav-item">
                 <a class="nav-link" href="/processos/novo">
                     <i class="bi bi-plus-circle me-2"></i> Novo Processo

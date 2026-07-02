@@ -1,15 +1,4 @@
 <?php
-$deptChaveActual = $processo['departamento_chave'];
-$mapaPermissao = [
-    'dfp' => 'recepcao_dfp',
-    'tecnico' => 'tecnico',
-    'chefe_departamento' => 'chefe_departamento',
-    'director_gabinete' => 'director_gabinete',
-    'gabinete_governador' => 'gabinete_governador',
-    'tribunal_administrativo' => 'recepcao_dfp',
-];
-$roleSlug = Auth::roleSlug();
-$podeAgir = Auth::isAdmin() || ($roleSlug === ($mapaPermissao[$deptChaveActual] ?? null));
 $estadoConcluido = $processo['estado_atual'] === 'concluido';
 $atrasado = $processo['prazo_data'] && $processo['prazo_data'] < date('Y-m-d') && !$estadoConcluido;
 ?>
@@ -43,7 +32,7 @@ $atrasado = $processo['prazo_data'] && $processo['prazo_data'] < date('Y-m-d') &
                             <?= $atrasado ? ' (atrasado)' : '' ?>
                         </span>
                     </div>
-                    <div class="col-6"><strong>Gabinete Actual:</strong> <?= View::e($processo['departamento_nome']) ?></div>
+                    <div class="col-6"><strong>Sector Actual:</strong> <?= View::e($processo['departamento_nome']) ?></div>
                     <div class="col-6"><strong>Funcionário Responsável:</strong> <?= View::e($processo['funcionario_nome'] ?? '—') ?></div>
                     <div class="col-12"><strong>Estado Actual:</strong>
                         <span class="badge <?= $estadoConcluido ? 'bg-success' : 'bg-info text-dark' ?>">
@@ -62,24 +51,24 @@ $atrasado = $processo['prazo_data'] && $processo['prazo_data'] < date('Y-m-d') &
             <div class="card-body">
                 <h6 class="mb-3">Acções de Tramitação</h6>
 
-                <?php if ($processo['estado_atual'] === 'recebido' && in_array($roleSlug, ['recepcao_dfp'], true) || (Auth::isAdmin() && $processo['estado_atual'] === 'recebido')): ?>
-                    <a href="/processos/<?= $processo['id'] ?>/distribuir" class="btn btn-primary">
-                        <i class="bi bi-person-check me-1"></i> Distribuir ao Técnico
+                <div class="d-flex flex-wrap gap-2 mb-2">
+                    <a href="/processos/<?= $processo['id'] ?>/encaminhar" class="btn btn-primary">
+                        <i class="bi bi-send me-1"></i> Encaminhar para Sector/Técnico
                     </a>
-                <?php else: ?>
-                    <form method="POST" action="/processos/<?= $processo['id'] ?>/encaminhar" class="d-flex gap-2">
-                        <input type="text" name="observacao" class="form-control form-control-sm" placeholder="Observação (opcional)">
-                        <button type="submit" class="btn btn-primary text-nowrap">
-                            <i class="bi bi-send me-1"></i> Encaminhar
+
+                    <form method="POST" action="/processos/<?= $processo['id'] ?>/concluir" data-confirm="Confirma que este processo está concluído?">
+                        <input type="hidden" name="observacao" value="Processo concluído.">
+                        <button type="submit" class="btn btn-success">
+                            <i class="bi bi-check2-circle me-1"></i> Concluir Processo
                         </button>
                     </form>
-                <?php endif; ?>
+                </div>
 
-                <?php if (in_array($roleSlug, ['director_gabinete', 'gabinete_governador'], true) || Auth::isAdmin()): ?>
-                    <form method="POST" action="/processos/<?= $processo['id'] ?>/devolver" class="mt-2 d-flex gap-2" data-confirm="Confirma a devolução deste processo ao DFP?">
+                <?php if ($sectorAnterior !== null): ?>
+                    <form method="POST" action="/processos/<?= $processo['id'] ?>/devolver" class="d-flex gap-2" data-confirm="Confirma a devolução deste processo a <?= View::e($sectorAnterior['department_nome'] ?? 'o sector anterior') ?>?">
                         <input type="text" name="observacao" class="form-control form-control-sm" placeholder="Motivo da devolução">
                         <button type="submit" class="btn btn-outline-danger text-nowrap">
-                            <i class="bi bi-arrow-return-left me-1"></i> Devolver
+                            <i class="bi bi-arrow-return-left me-1"></i> Devolver a <?= View::e($sectorAnterior['department_nome'] ?? 'sector anterior') ?>
                         </button>
                     </form>
                 <?php endif; ?>

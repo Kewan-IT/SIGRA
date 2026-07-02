@@ -29,6 +29,25 @@ class Auth
         return $_SESSION['user']['role_slug'] ?? null;
     }
 
+    public static function departmentId(): ?int
+    {
+        $id = $_SESSION['user']['department_id'] ?? null;
+        return $id !== null ? (int) $id : null;
+    }
+
+    public static function departmentChave(): ?string
+    {
+        return $_SESSION['user']['department_chave'] ?? null;
+    }
+
+    /** Utilizador pode registar novos processos (Secretaria, recepção ou admin) */
+    public static function podeRegistarProcesso(): bool
+    {
+        return self::isAdmin()
+            || self::hasRole('recepcao_dfp')
+            || self::departmentChave() === 'secretaria';
+    }
+
     public static function login(array $user): void
     {
         $_SESSION['user_id'] = $user['id'];

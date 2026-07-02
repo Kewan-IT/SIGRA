@@ -4,23 +4,16 @@ class Department extends BaseModel
 {
     protected string $table = 'departments';
 
-    /**
-     * Mapa do fluxo fixo do Gabinete do Governador da Zambézia.
-     * Cada chave é o departamento actual; o valor é a chave do próximo
-     * departamento quando a acção "encaminhar" é executada.
-     * Alguns departamentos têm mais de um destino possível (ex: retorno).
-     */
-    private const FLUXO_ENCAMINHAR = [
-        'dfp'                     => 'tecnico',
-        'tecnico'                 => 'chefe_departamento',
-        'chefe_departamento'      => 'director_gabinete',
-        'director_gabinete'       => 'gabinete_governador', // via retorno ao DFP, tratado no controller
-        'gabinete_governador'     => 'tribunal_administrativo',
-    ];
-
-    public function all(string $orderBy = 'ordem'): array
+    public function all(string $orderBy = 'ordem, nome'): array
     {
         return parent::all($orderBy);
+    }
+
+    /** Sectores activos, ordenados por nome — usados nos selects de encaminhamento */
+    public function ativos(): array
+    {
+        $stmt = $this->db->query("SELECT * FROM departments WHERE ativo = 1 ORDER BY nome");
+        return $stmt->fetchAll();
     }
 
     public function findByChave(string $chave): ?array
@@ -31,8 +24,41 @@ class Department extends BaseModel
         return $row === false ? null : $row;
     }
 
-    public function proximoDaChave(string $chaveAtual): ?string
+    /** Gera uma chave única (slug) a partir do nome do sector */
+    public function gerarChave(string $nome): string
     {
-        return self::FLUXO_ENCAMINHAR[$chaveAtual] ?? null;
+        $base = strtolower(trim($nome));
+        $base = iconv('UTF-8', 'ASCII//TRANSLIT', $base) ?: $base;
+        $base = preg_replace('/[^a-z0-9]+/', '_', $base);
+        $base = trim($base, '_');
+        $base = $base !== '' ? $base : 'sector';
+
+        $chave = substr($base, 0, 40);
+        $sufixo = 1;
+        while ($this->findByChave($chave) !== null) {
+            $sufixo++;
+            $chave = substr($base, 0, 40 - strlen('_' . $sufixo)) . '_' . $sufixo;
+        }
+        return $chave;
+    }
+
+    /** Verifica se o sector já tem histórico associado (processos, movimentos ou utilizadores) */
+    public function emUso(int $id): bool
+    {
+        $tabelas = [
+            ['tabela' => 'processes', 'coluna' => 'department_atual_id'],
+            ['tabela' => 'process_movements', 'coluna' => 'de_department_id'],
+            ['tabela' => 'process_movements', 'coluna' => 'para_department_id'],
+            ['tabela' => 'users', 'coluna' => 'department_id'],
+        ];
+
+        foreach ($tabelas as $t) {
+            $stmt = $this->db->prepare("SELECT 1 FROM {$t['tabela']} WHERE {$t['coluna']} = :id LIMIT 1");
+            $stmt->execute(['id' => $id]);
+            if ($stmt->fetch() !== false) {
+                return true;
+            }
+        }
+        return false;
     }
 }

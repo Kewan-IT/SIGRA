@@ -51,6 +51,7 @@ class AuthController
             'role_slug' => $user['role_slug'],
             'role_nome' => $user['role_nome'],
             'department_id' => $user['department_id'],
+            'department_chave' => $user['department_chave'] ?? null,
         ]);
 
         $_SESSION['trocar_senha_obrigatorio'] = (int) $user['trocar_senha_obrigatorio'] === 1;

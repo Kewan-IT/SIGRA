@@ -2,25 +2,6 @@
 
 class ProcessController
 {
-    /**
-     * Sequência fixa de tramitação do Gabinete do Governador da Zambézia.
-     * Cada etapa define: estado (chave interna), departamento (chave da tabela
-     * departments), rótulo legível e a acção que o utilizador executa para
-     * avançar para a etapa seguinte.
-     */
-    private const SEQUENCIA = [
-        ['estado' => 'recebido',          'dept' => 'dfp',                     'rotulo' => 'Recebido no DFP'],
-        ['estado' => 'distribuido_tecnico','dept' => 'tecnico',                'rotulo' => 'Distribuído ao Técnico'],
-        ['estado' => 'enviado_chefe',      'dept' => 'chefe_departamento',      'rotulo' => 'Enviado ao Chefe do Departamento'],
-        ['estado' => 'enviado_diretor',    'dept' => 'director_gabinete',       'rotulo' => 'Enviado ao Director do Gabinete'],
-        ['estado' => 'retornado_dfp_1',    'dept' => 'dfp',                     'rotulo' => 'Retornado ao DFP'],
-        ['estado' => 'enviado_governador', 'dept' => 'gabinete_governador',     'rotulo' => 'Enviado ao Gabinete do Governador'],
-        ['estado' => 'homologado',         'dept' => 'gabinete_governador',     'rotulo' => 'Homologado pelo Governador'],
-        ['estado' => 'retornado_dfp_2',     'dept' => 'dfp',                     'rotulo' => 'Retornado ao DFP'],
-        ['estado' => 'enviado_tribunal',   'dept' => 'tribunal_administrativo', 'rotulo' => 'Enviado ao Tribunal Administrativo'],
-        ['estado' => 'concluido',          'dept' => 'tribunal_administrativo', 'rotulo' => 'Processo Concluído'],
-    ];
-
     private Process $processModel;
     private ProcessMovement $movementModel;
     private Department $departmentModel;
@@ -84,7 +65,12 @@ class ProcessController
 
     public function createForm(): void
     {
-        Auth::requireRole(['admin', 'recepcao_dfp']);
+        Auth::requireLogin();
+        if (!Auth::podeRegistarProcesso()) {
+            http_response_code(403);
+            View::render('errors.403', []);
+            return;
+        }
 
         View::render('processos.create', [
             'distritos' => $this->districtModel->ativos(),
@@ -95,7 +81,12 @@ class ProcessController
 
     public function store(): void
     {
-        Auth::requireRole(['admin', 'recepcao_dfp']);
+        Auth::requireLogin();
+        if (!Auth::podeRegistarProcesso()) {
+            http_response_code(403);
+            View::render('errors.403', []);
+            return;
+        }
 
         $assunto = trim($_POST['assunto'] ?? '');
         $tipoId = (int) ($_POST['tipo_id'] ?? 0);
@@ -114,7 +105,12 @@ class ProcessController
         $prazoDias = $tipo['prazo_padrao_dias'] ?? 15;
         $prazoData = date('Y-m-d', strtotime($dataEntrada . " +{$prazoDias} days"));
 
-        $dfp = $this->departmentModel->findByChave('dfp');
+        $secretaria = $this->departmentModel->findByChave('secretaria');
+        if ($secretaria === null) {
+            Flash::erro('O sector "Secretaria" não está configurado. Contacte o administrador.');
+            header('Location: /processos/novo');
+            exit;
+        }
 
         $numeroProcesso = trim($_POST['numero_processo'] ?? '') ?: $this->processModel->gerarNumeroProcesso();
 
@@ -127,7 +123,7 @@ class ProcessController
             'requerente' => $requerente,
             'data_entrada' => $dataEntrada,
             'prazo_data' => $prazoData,
-            'department_atual_id' => $dfp['id'],
+            'department_atual_id' => $secretaria['id'],
             'estado_atual' => 'recebido',
             'observacoes' => $observacoes,
             'criado_por' => Auth::id(),
@@ -136,12 +132,12 @@ class ProcessController
         $this->movementModel->insert([
             'process_id' => $id,
             'de_department_id' => null,
-            'para_department_id' => $dfp['id'],
+            'para_department_id' => $secretaria['id'],
             'de_usuario_id' => null,
             'para_usuario_id' => null,
             'estado_anterior' => null,
             'estado_novo' => 'recebido',
-            'observacao' => 'Processo registado na recepção (DFP).',
+            'observacao' => 'Processo registado na Secretaria.',
             'usuario_id' => Auth::id(),
         ]);
 
@@ -169,22 +165,19 @@ class ProcessController
         $historico = $this->movementModel->historicoDoProcesso($id);
         $anexos = $this->attachmentModel->doProcesso($id);
 
-        $proximaEtapa = $this->proximaEtapa($processo['estado_atual']);
-        $tecnicos = $this->userModel->allWithRole();
-
         View::render('processos.show', [
             'processo' => $processo,
             'historico' => $historico,
             'anexos' => $anexos,
-            'proximaEtapa' => $proximaEtapa,
-            'tecnicos' => array_filter($tecnicos, fn($u) => $u['role_slug'] ?? null !== null),
-            'sequencia' => self::SEQUENCIA,
+            'podeAgir' => $this->podeAgir($processo),
+            'sectorAnterior' => $this->sectorAnterior($historico, $processo),
         ]);
     }
 
-    public function distribuirForm(string $id): void
+    /** Formulário único de encaminhamento: escolher sector destino + utilizador destino */
+    public function encaminharForm(string $id): void
     {
-        Auth::requireRole(['admin', 'chefe_departamento']);
+        Auth::requireLogin();
         $id = (int) $id;
         $processo = $this->processModel->findCompleto($id);
         if ($processo === null) {
@@ -193,65 +186,23 @@ class ProcessController
             return;
         }
 
-        $tecnicos = array_filter($this->userModel->allWithRole(), function ($u) {
-            return in_array($u['role_slug'] ?? '', ['tecnico'], true) && (int) $u['ativo'] === 1;
-        });
-
-        View::render('processos.distribuir', [
-            'processo' => $processo,
-            'tecnicos' => $tecnicos,
-        ]);
-    }
-
-    public function distribuir(string $id): void
-    {
-        Auth::requireRole(['admin', 'chefe_departamento']);
-        $id = (int) $id;
-        $tecnicoId = (int) ($_POST['funcionario_responsavel_id'] ?? 0);
-        $observacao = trim($_POST['observacao'] ?? '');
-
-        $processo = $this->processModel->find($id);
-        if ($processo === null || $tecnicoId === 0) {
-            Flash::erro('Não foi possível distribuir o processo.');
-            header('Location: /processos/' . $id);
-            exit;
+        if (!$this->podeAgir($processo)) {
+            http_response_code(403);
+            View::render('errors.403', []);
+            return;
         }
 
-        $tecnicoDept = $this->departmentModel->findByChave('tecnico');
+        $sectores = $this->departmentModel->ativos();
+        $utilizadores = array_filter($this->userModel->allWithRole(), fn($u) => (int) $u['ativo'] === 1);
 
-        $this->processModel->update($id, [
-            'funcionario_responsavel_id' => $tecnicoId,
-            'department_atual_id' => $tecnicoDept['id'],
-            'estado_atual' => 'distribuido_tecnico',
+        View::render('processos.encaminhar', [
+            'processo' => $processo,
+            'sectores' => $sectores,
+            'utilizadores' => $utilizadores,
         ]);
-
-        $this->movementModel->insert([
-            'process_id' => $id,
-            'de_department_id' => $processo['department_atual_id'],
-            'para_department_id' => $tecnicoDept['id'],
-            'de_usuario_id' => null,
-            'para_usuario_id' => $tecnicoId,
-            'estado_anterior' => $processo['estado_atual'],
-            'estado_novo' => 'distribuido_tecnico',
-            'observacao' => $observacao ?: 'Processo distribuído ao técnico.',
-            'usuario_id' => Auth::id(),
-        ]);
-
-        $this->notificationModel->notificarUtilizador(
-            $tecnicoId,
-            $id,
-            'novo_processo',
-            "Foi-lhe atribuído o processo {$processo['numero_processo']}."
-        );
-
-        $this->auditModel->registar(Auth::id(), 'distribuir', 'processes', $id, "Distribuído ao utilizador #{$tecnicoId}");
-
-        Flash::sucesso('Processo distribuído com sucesso.');
-        header('Location: /processos/' . $id);
-        exit;
     }
 
-    /** Avança o processo para a etapa seguinte da sequência fixa de tramitação */
+    /** Encaminha o processo para o sector e utilizador escolhidos pelo técnico */
     public function encaminhar(string $id): void
     {
         Auth::requireLogin();
@@ -264,50 +215,73 @@ class ProcessController
             exit;
         }
 
-        $proxima = $this->proximaEtapa($processo['estado_atual']);
-        if ($proxima === null) {
+        if (!$this->podeAgir($processo)) {
+            http_response_code(403);
+            View::render('errors.403', []);
+            return;
+        }
+
+        if ($processo['estado_atual'] === 'concluido') {
             Flash::erro('Este processo já está concluído.');
             header('Location: /processos/' . $id);
             exit;
         }
 
+        $setorDestinoId = (int) ($_POST['department_destino_id'] ?? 0);
+        $tecnicoDestinoId = (int) ($_POST['funcionario_destino_id'] ?? 0);
         $observacao = trim($_POST['observacao'] ?? '');
-        $departamentoDestino = $this->departmentModel->findByChave($proxima['dept']);
 
-        $dadosUpdate = [
-            'department_atual_id' => $departamentoDestino['id'],
-            'estado_atual' => $proxima['estado'],
-        ];
+        $setorDestino = $setorDestinoId > 0 ? $this->departmentModel->find($setorDestinoId) : null;
+        $tecnicoDestino = $tecnicoDestinoId > 0 ? $this->userModel->find($tecnicoDestinoId) : null;
 
-        if ($proxima['estado'] === 'concluido') {
-            $dadosUpdate['concluido_em'] = date('Y-m-d H:i:s');
+        if ($setorDestino === null || (int) $setorDestino['ativo'] !== 1) {
+            Flash::erro('Seleccione um sector de destino válido.');
+            header('Location: /processos/' . $id . '/encaminhar');
+            exit;
         }
 
-        $this->processModel->update($id, $dadosUpdate);
+        if ($tecnicoDestino === null || (int) $tecnicoDestino['ativo'] !== 1) {
+            Flash::erro('Seleccione o técnico/utilizador de destino.');
+            header('Location: /processos/' . $id . '/encaminhar');
+            exit;
+        }
+
+        $this->processModel->update($id, [
+            'funcionario_responsavel_id' => $tecnicoDestinoId,
+            'department_atual_id' => $setorDestinoId,
+            'estado_atual' => 'encaminhado',
+        ]);
 
         $this->movementModel->insert([
             'process_id' => $id,
             'de_department_id' => $processo['department_atual_id'],
-            'para_department_id' => $departamentoDestino['id'],
-            'de_usuario_id' => null,
-            'para_usuario_id' => null,
+            'para_department_id' => $setorDestinoId,
+            'de_usuario_id' => $processo['funcionario_responsavel_id'],
+            'para_usuario_id' => $tecnicoDestinoId,
             'estado_anterior' => $processo['estado_atual'],
-            'estado_novo' => $proxima['estado'],
-            'observacao' => $observacao ?: $proxima['rotulo'],
+            'estado_novo' => 'encaminhado',
+            'observacao' => $observacao ?: ('Encaminhado para ' . $setorDestino['nome'] . '.'),
             'usuario_id' => Auth::id(),
         ]);
 
-        $this->auditModel->registar(Auth::id(), 'encaminhar', 'processes', $id, $proxima['rotulo']);
+        $this->notificationModel->notificarUtilizador(
+            $tecnicoDestinoId,
+            $id,
+            'novo_processo',
+            "Foi-lhe encaminhado o processo {$processo['numero_processo']} ({$setorDestino['nome']})."
+        );
 
-        Flash::sucesso('Processo encaminhado: ' . $proxima['rotulo']);
+        $this->auditModel->registar(Auth::id(), 'encaminhar', 'processes', $id, "Encaminhado para {$setorDestino['nome']} / utilizador #{$tecnicoDestinoId}");
+
+        Flash::sucesso('Processo encaminhado para ' . $setorDestino['nome'] . '.');
         header('Location: /processos/' . $id);
         exit;
     }
 
-    /** Devolve o processo para a etapa anterior (usado pelo Director/Governador) */
+    /** Devolve o processo ao sector/utilizador do passo anterior do histórico */
     public function devolver(string $id): void
     {
-        Auth::requireRole(['admin', 'director_gabinete', 'gabinete_governador']);
+        Auth::requireLogin();
         $id = (int) $id;
 
         $processo = $this->processModel->find($id);
@@ -317,29 +291,44 @@ class ProcessController
             exit;
         }
 
+        if (!$this->podeAgir($processo)) {
+            http_response_code(403);
+            View::render('errors.403', []);
+            return;
+        }
+
+        $historico = $this->movementModel->historicoDoProcesso($id);
+        $anterior = $this->sectorAnterior($historico, $processo);
+
+        if ($anterior === null) {
+            Flash::erro('Não há um sector anterior para onde devolver este processo.');
+            header('Location: /processos/' . $id);
+            exit;
+        }
+
         $observacao = trim($_POST['observacao'] ?? 'Processo devolvido para revisão.');
-        $dfp = $this->departmentModel->findByChave('dfp');
 
         $this->processModel->update($id, [
-            'department_atual_id' => $dfp['id'],
+            'department_atual_id' => $anterior['department_id'],
+            'funcionario_responsavel_id' => $anterior['usuario_id'],
             'estado_atual' => 'devolvido',
         ]);
 
         $this->movementModel->insert([
             'process_id' => $id,
             'de_department_id' => $processo['department_atual_id'],
-            'para_department_id' => $dfp['id'],
-            'de_usuario_id' => null,
-            'para_usuario_id' => null,
+            'para_department_id' => $anterior['department_id'],
+            'de_usuario_id' => $processo['funcionario_responsavel_id'],
+            'para_usuario_id' => $anterior['usuario_id'],
             'estado_anterior' => $processo['estado_atual'],
             'estado_novo' => 'devolvido',
             'observacao' => $observacao,
             'usuario_id' => Auth::id(),
         ]);
 
-        if (!empty($processo['funcionario_responsavel_id'])) {
+        if (!empty($anterior['usuario_id'])) {
             $this->notificationModel->notificarUtilizador(
-                $processo['funcionario_responsavel_id'],
+                (int) $anterior['usuario_id'],
                 $id,
                 'devolvido',
                 "O processo {$processo['numero_processo']} foi devolvido: {$observacao}"
@@ -348,23 +337,113 @@ class ProcessController
 
         $this->auditModel->registar(Auth::id(), 'devolver', 'processes', $id, $observacao);
 
-        Flash::sucesso('Processo devolvido ao DFP.');
+        Flash::sucesso('Processo devolvido ao sector anterior.');
         header('Location: /processos/' . $id);
         exit;
     }
 
-    private function proximaEtapa(string $estadoAtual): ?array
+    /** Marca o processo como concluído no sector/utilizador actual */
+    public function concluir(string $id): void
     {
-        foreach (self::SEQUENCIA as $index => $etapa) {
-            if ($etapa['estado'] === $estadoAtual) {
-                return self::SEQUENCIA[$index + 1] ?? null;
-            }
+        Auth::requireLogin();
+        $id = (int) $id;
+
+        $processo = $this->processModel->find($id);
+        if ($processo === null) {
+            Flash::erro('Processo não encontrado.');
+            header('Location: /processos');
+            exit;
         }
-        // Estado "devolvido" ou desconhecido -> reinicia no DFP (distribuição)
-        if ($estadoAtual === 'devolvido') {
-            return self::SEQUENCIA[1];
+
+        if (!$this->podeAgir($processo)) {
+            http_response_code(403);
+            View::render('errors.403', []);
+            return;
         }
-        return null;
+
+        if ($processo['estado_atual'] === 'concluido') {
+            Flash::erro('Este processo já está concluído.');
+            header('Location: /processos/' . $id);
+            exit;
+        }
+
+        $observacao = trim($_POST['observacao'] ?? 'Processo concluído.');
+
+        $this->processModel->update($id, [
+            'estado_atual' => 'concluido',
+            'concluido_em' => date('Y-m-d H:i:s'),
+        ]);
+
+        $this->movementModel->insert([
+            'process_id' => $id,
+            'de_department_id' => $processo['department_atual_id'],
+            'para_department_id' => $processo['department_atual_id'],
+            'de_usuario_id' => $processo['funcionario_responsavel_id'],
+            'para_usuario_id' => $processo['funcionario_responsavel_id'],
+            'estado_anterior' => $processo['estado_atual'],
+            'estado_novo' => 'concluido',
+            'observacao' => $observacao,
+            'usuario_id' => Auth::id(),
+        ]);
+
+        $this->auditModel->registar(Auth::id(), 'concluir', 'processes', $id, $observacao);
+
+        Flash::sucesso('Processo marcado como concluído.');
+        header('Location: /processos/' . $id);
+        exit;
+    }
+
+    /**
+     * Regra de permissão para agir sobre um processo (encaminhar, devolver, concluir):
+     * - administrador: sempre pode;
+     * - utilizador a quem o processo está actualmente atribuído: pode;
+     * - processo ainda sem responsável definido: qualquer utilizador do sector actual pode assumi-lo;
+     * - chefe de departamento pertencente ao sector actual: pode sempre intervir.
+     */
+    private function podeAgir(array $processo): bool
+    {
+        if (Auth::isAdmin()) {
+            return true;
+        }
+
+        $userId = Auth::id();
+        $userDeptId = Auth::departmentId();
+        $deptAtualId = (int) $processo['department_atual_id'];
+        $responsavelId = $processo['funcionario_responsavel_id'] ?? null;
+
+        if ($responsavelId !== null && (int) $responsavelId === (int) $userId) {
+            return true;
+        }
+
+        if ($responsavelId === null && $userDeptId === $deptAtualId) {
+            return true;
+        }
+
+        if (Auth::hasRole('chefe_departamento') && $userDeptId === $deptAtualId) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /** Devolve o sector/utilizador de onde o processo veio no último movimento, se existir */
+    private function sectorAnterior(array $historico, array $processo): ?array
+    {
+        if (empty($historico)) {
+            return null;
+        }
+
+        $ultimo = end($historico);
+        if (empty($ultimo['de_department_id'])) {
+            return null;
+        }
+
+        return [
+            'department_id' => (int) $ultimo['de_department_id'],
+            'department_nome' => $ultimo['de_departamento_nome'] ?? null,
+            'usuario_id' => $ultimo['de_usuario_id'] ?? null,
+            'usuario_nome' => $ultimo['de_usuario_nome'] ?? null,
+        ];
     }
 
     private function handleUploads(int $processId): void

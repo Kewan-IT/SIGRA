@@ -7,9 +7,10 @@ class User extends BaseModel
     public function findByEmail(string $email): ?array
     {
         $stmt = $this->db->prepare(
-            "SELECT u.*, r.chave AS role_slug, r.nome AS role_nome
+            "SELECT u.*, r.chave AS role_slug, r.nome AS role_nome, d.chave AS department_chave
              FROM users u
              JOIN roles r ON r.id = u.role_id
+             LEFT JOIN departments d ON d.id = u.department_id
              WHERE u.email = :email LIMIT 1"
         );
         $stmt->execute(['email' => $email]);
@@ -34,7 +35,7 @@ class User extends BaseModel
     public function allWithRole(): array
     {
         $stmt = $this->db->query(
-            "SELECT u.*, r.nome AS role_nome, r.chave AS role_slug, d.nome AS department_nome
+            "SELECT u.*, r.nome AS role_nome, r.chave AS role_slug, d.nome AS department_nome, d.chave AS department_chave
              FROM users u
              JOIN roles r ON r.id = u.role_id
              LEFT JOIN departments d ON d.id = u.department_id
